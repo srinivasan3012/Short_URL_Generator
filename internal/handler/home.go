@@ -196,6 +196,20 @@ const homeHTML = `<!DOCTYPE html>
       animation: fadeIn 0.3s ease;
     }
 
+    .error-box {
+      margin-top: 16px;
+      padding: 14px 18px;
+      border-radius: 12px;
+      background: rgba(239, 68, 68, 0.12);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      font-size: 0.95rem;
+      display: none;
+      align-items: center;
+      gap: 10px;
+      animation: fadeIn 0.25s ease;
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -316,6 +330,8 @@ const homeHTML = `<!DOCTYPE html>
         </div>
       </form>
 
+      <div class="error-box" id="error-box"></div>
+
       <div class="result-box" id="result-box">
         <div class="result-content">
           <div>
@@ -361,7 +377,18 @@ const homeHTML = `<!DOCTYPE html>
       const codeInput = document.getElementById('code-input');
       const submitBtn = document.getElementById('submit-btn');
       const resultBox = document.getElementById('result-box');
+      const errorBox = document.getElementById('error-box');
       const linkHref = document.getElementById('short-link-href');
+
+      errorBox.style.display = 'none';
+      resultBox.style.display = 'none';
+
+      const customAlias = codeInput.value.trim();
+      if (customAlias && /\s/.test(customAlias)) {
+        errorBox.innerText = '⚠️ Custom alias cannot contain spaces. Use hyphens (-) or underscores (_) instead.';
+        errorBox.style.display = 'flex';
+        return;
+      }
 
       submitBtn.disabled = true;
       submitBtn.innerText = 'Shortening...';
@@ -369,8 +396,8 @@ const homeHTML = `<!DOCTYPE html>
       const payload = {
         url: urlInput.value.trim()
       };
-      if (codeInput.value.trim()) {
-        payload.custom_code = codeInput.value.trim();
+      if (customAlias) {
+        payload.custom_code = customAlias;
       }
 
       try {
@@ -382,7 +409,8 @@ const homeHTML = `<!DOCTYPE html>
         const data = await res.json();
 
         if (!res.ok) {
-          alert('Error: ' + (data.error?.message || 'Failed to shorten URL'));
+          errorBox.innerText = '⚠️ ' + (data.error?.message || 'Failed to shorten URL');
+          errorBox.style.display = 'flex';
           return;
         }
 
@@ -391,7 +419,8 @@ const homeHTML = `<!DOCTYPE html>
         linkHref.innerText = fullURL;
         resultBox.style.display = 'block';
       } catch (err) {
-        alert('Request failed: ' + err.message);
+        errorBox.innerText = '⚠️ Network request failed: ' + err.message;
+        errorBox.style.display = 'flex';
       } finally {
         submitBtn.disabled = false;
         submitBtn.innerText = 'Shorten URL \u2192';

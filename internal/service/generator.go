@@ -2,6 +2,7 @@ package service
 
 import (
 	"crypto/rand"
+	"fmt"
 	"math/big"
 	"regexp"
 	"strings"
@@ -70,7 +71,7 @@ func (g *base62Generator) ValidateCustom(code string) error {
 	}
 
 	if !customCodeRegex.MatchString(trimmed) {
-		return domain.ErrInvalidInput
+		return fmt.Errorf("%w: custom alias must be 4-32 characters and contain only letters, numbers, hyphens (-), and underscores (_) with no spaces", domain.ErrInvalidInput)
 	}
 
 	return nil
