@@ -2,58 +2,110 @@ package main
 
 import (
 	"context"
-	"log"
+	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
+
+	"github.com/srini/url-shortener/internal/config"
+	"github.com/srini/url-shortener/internal/domain"
+	"github.com/srini/url-shortener/internal/handler"
+	"github.com/srini/url-shortener/internal/repository"
+	"github.com/srini/url-shortener/internal/service"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	// 1. Initialize structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+	slog.SetDefault(logger)
+
+	slog.Info("starting URL Shortener service...")
+
+	// 2. Load and validate configuration
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok","time":"` + time.Now().UTC().Format(time.RFC3339) + `"}`))
+	// 3. Initialize repository
+	var repo domain.URLRepository
+	if cfg.DatabaseURL != "" {
+		slog.Info("connecting to PostgreSQL database...", "url", sanitizeDBURL(cfg.DatabaseURL))
+		pgRepo, err := repository.NewPostgresRepository(context.Background(), cfg)
+		if err != nil {
+			slog.Error("failed to connect to PostgreSQL", "error", err)
+			os.Exit(1)
+		}
+		defer pgRepo.Close()
+		repo = pgRepo
+		slog.Info("PostgreSQL connection pool established successfully")
+	} else {
+		slog.Warn("DATABASE_URL is not set; running in local in-memory storage mode")
+		repo = repository.NewMemoryRepository()
+		defer repo.Close()
+	}
+
+	// 4. Construct service layer
+	generator := service.NewBase62Generator()
+	validator := service.NewURLValidator()
+	urlService := service.NewURLService(repo, generator, validator, cfg.BaseURL, cfg.CodeLength)
+
+	// 5. Construct HTTP router
+	urlHandler := handler.NewURLHandler(urlService)
+	router := handler.NewRouter(urlHandler, handler.RouterConfig{
+		RateLimitRPS:   cfg.RateLimitRPS,
+		RateLimitBurst: cfg.RateLimitBurst,
 	})
 
+	// 6. Configure HTTP server
 	server := &http.Server{
-		Addr:         ":" + port,
-		Handler:      mux,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		Addr:         ":" + cfg.Port,
+		Handler:      router,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
 	}
 
+	// 7. Start server asynchronously
 	serverErrors := make(chan error, 1)
 	go func() {
-		log.Printf("Starting URL Shortener API on port %s", port)
+		slog.Info("listening and serving HTTP requests", "port", cfg.Port, "base_url", cfg.BaseURL)
 		serverErrors <- server.ListenAndServe()
 	}()
 
+	// 8. Graceful shutdown handler
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
 	select {
 	case err := <-serverErrors:
-		if err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Fatal server error: %v", err)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("fatal HTTP server error", "error", err)
+			os.Exit(1)
 		}
 	case sig := <-shutdown:
-		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		slog.Info("shutdown signal received", "signal", sig.String())
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		if err := server.Shutdown(ctx); err != nil {
-			log.Printf("Graceful shutdown failed: %v, forcing close", err)
+			slog.Error("server failed to shutdown gracefully; forcing termination", "error", err)
 			_ = server.Close()
 		}
-		log.Println("Server gracefully stopped.")
+		slog.Info("server shutdown complete")
 	}
+}
+
+// sanitizeDBURL masks sensitive credentials in log output.
+func sanitizeDBURL(raw string) string {
+	if len(raw) < 15 {
+		return "***"
+	}
+	return fmt.Sprintf("postgres://***@***:%s", raw[len(raw)-15:])
 }
