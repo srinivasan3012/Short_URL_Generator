@@ -263,3 +263,72 @@ func TestHandler_UpdateAndDelete(t *testing.T) {
 		t.Fatalf("expected 404 Not Found after delete, got: %d", rr.Code)
 	}
 }
+
+func TestHandler_Challenge5ShortenerIntegration(t *testing.T) {
+	router := setupTestRouter()
+
+	// 1. POST /shorten -> 201 Created
+	createBody := `{"code":"ch5test","url":"https://challenge5.example.com"}`
+	req := httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewBufferString(createBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// 2. Duplicate POST /shorten -> 409 Conflict
+	dupBody := `{"code":"ch5test","url":"https://overwrite-attempt.example.com"}`
+	req = httptest.NewRequest(http.MethodPost, "/shorten", bytes.NewBufferString(dupBody))
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409 Conflict for duplicate code, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// 3. GET /resolve/ch5test -> 200 OK (verifying original URL preserved)
+	req = httptest.NewRequest(http.MethodGet, "/resolve/ch5test", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+	var resolveResp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resolveResp); err != nil {
+		t.Fatalf("failed to decode json: %v", err)
+	}
+	if resolveResp["code"] != "ch5test" || resolveResp["url"] != "https://challenge5.example.com" {
+		t.Fatalf("unexpected resolve body: %+v", resolveResp)
+	}
+
+	// 4. GET /resolve/nonexistent -> 404 Not Found
+	req = httptest.NewRequest(http.MethodGet, "/resolve/nonexistent", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 Not Found, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// 5. GET /shorten -> 405 Method Not Allowed
+	req = httptest.NewRequest(http.MethodGet, "/shorten", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 Method Not Allowed on GET /shorten, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+
+	// 6. POST /resolve/ch5test -> 405 Method Not Allowed
+	req = httptest.NewRequest(http.MethodPost, "/resolve/ch5test", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 Method Not Allowed on POST /resolve/ch5test, got %d. Body: %s", rr.Code, rr.Body.String())
+	}
+}

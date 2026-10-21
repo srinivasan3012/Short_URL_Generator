@@ -184,4 +184,3 @@ func loadDotEnv() {
 		}
 	}
 }
-

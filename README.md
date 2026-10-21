@@ -202,6 +202,89 @@ curl -i -X DELETE http://localhost:8080/api/v1/urls/my-tutorial
 
 ---
 
+## Challenge 5: In-Memory URL Shortener (Duplicate Code Handling)
+
+In addition to the database-backed persistent engine, the service provides high-performance, strictly in-memory endpoints implementing Go standard library URL shortening with atomic duplicate-code rejection.
+
+### Architecture & Concurrency Safety
+- **Storage:** Safe in-memory hash map (`map[string]string`) storing `short_code -> destination_url`.
+- **Atomic Locking:** Guarded with `sync.RWMutex`. The existence check and insertion occur atomically inside a single critical section under `Lock()`. Separate unlocked reads followed by writes are strictly avoided to eliminate race conditions.
+- **Duplicate Prevention:** If a code already exists, creating it again immediately returns `409 Conflict` and **never overwrites** the original destination.
+- **In-Memory Lifetime Limitation:** Mappings exist strictly within process memory and are lost when the service restarts. In multi-instance / distributed deployments, mappings are isolated to individual instances.
+
+### Endpoints & Status Codes
+
+| Endpoint | Method | Success Code | Conflict Code | Not Found Code | Description |
+|---|---|---|---|---|---|
+| `/shorten` | `POST` | `201 Created` | `409 Conflict` | — | Store code and destination URL atomically |
+| `/resolve/{code}` | `GET` | `200 OK` | — | `404 Not Found` | Retrieve destination URL |
+| Any other method | Various | — | — | `405 Method Not Allowed` | Unsupported HTTP methods |
+
+### Usage Examples
+
+#### 1. Create a New Short Code (201 Created)
+```bash
+curl -i -X POST http://localhost:8080/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"code":"abc123","url":"https://example.com"}'
+```
+**Response (201 Created):**
+```json
+{
+  "code": "abc123",
+  "url": "https://example.com"
+}
+```
+
+#### 2. Attempt Duplicate Short Code (409 Conflict - Never Overwrites)
+```bash
+curl -i -X POST http://localhost:8080/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"code":"abc123","url":"https://another-example.com"}'
+```
+**Response (409 Conflict):**
+```json
+{
+  "error": "short code already exists"
+}
+```
+
+#### 3. Resolve an Existing Short Code (200 OK)
+```bash
+curl -i http://localhost:8080/resolve/abc123
+```
+**Response (200 OK):**
+```json
+{
+  "code": "abc123",
+  "url": "https://example.com"
+}
+```
+
+#### 4. Resolve a Missing Short Code (404 Not Found)
+```bash
+curl -i http://localhost:8080/resolve/missing123
+```
+**Response (404 Not Found):**
+```json
+{
+  "error": "short code not found"
+}
+```
+
+#### 5. Method Not Allowed (405 Method Not Allowed)
+```bash
+curl -i http://localhost:8080/shorten
+```
+**Response (405 Method Not Allowed):**
+```json
+{
+  "error": "method not allowed"
+}
+```
+
+---
+
 ## Testing
 
 Run the full automated test suite:

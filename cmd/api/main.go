@@ -15,6 +15,7 @@ import (
 	"github.com/srini/url-shortener/internal/handler"
 	"github.com/srini/url-shortener/internal/repository"
 	"github.com/srini/url-shortener/internal/service"
+	"github.com/srini/url-shortener/internal/shortener"
 )
 
 func main() {
@@ -57,10 +58,14 @@ func main() {
 	urlService := service.NewURLService(repo, generator, validator, cfg.BaseURL, cfg.CodeLength)
 
 	// 5. Construct HTTP router
+	inMemoryStore := shortener.NewMemoryStore()
+	shortenerHandler := shortener.NewHandler(inMemoryStore)
+
 	urlHandler := handler.NewURLHandler(urlService)
 	router := handler.NewRouter(urlHandler, handler.RouterConfig{
-		RateLimitRPS:   cfg.RateLimitRPS,
-		RateLimitBurst: cfg.RateLimitBurst,
+		RateLimitRPS:     cfg.RateLimitRPS,
+		RateLimitBurst:   cfg.RateLimitBurst,
+		ShortenerHandler: shortenerHandler,
 	})
 
 	// 6. Configure HTTP server

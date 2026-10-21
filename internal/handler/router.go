@@ -4,12 +4,14 @@ import (
 	"net/http"
 
 	"github.com/srini/url-shortener/internal/middleware"
+	"github.com/srini/url-shortener/internal/shortener"
 )
 
 // RouterConfig holds settings for assembling the HTTP handler stack.
 type RouterConfig struct {
-	RateLimitRPS   float64
-	RateLimitBurst int
+	RateLimitRPS     float64
+	RateLimitBurst   int
+	ShortenerHandler *shortener.Handler
 }
 
 // NewRouter constructs and registers all API routes with their middleware stack.
@@ -27,6 +29,25 @@ func NewRouter(h *URLHandler, cfg RouterConfig) http.Handler {
 	mux.HandleFunc("PATCH /api/v1/urls/{code}", h.UpdateURL)
 	mux.HandleFunc("DELETE /api/v1/urls/{code}", h.DeleteURL)
 	mux.HandleFunc("GET /api/v1/urls/{code}/stats", h.GetStats)
+
+	// In-Memory Challenge 5 Endpoints
+	shortenerHandler := cfg.ShortenerHandler
+	if shortenerHandler == nil {
+		shortenerHandler = shortener.NewHandler(shortener.NewMemoryStore())
+	}
+	mux.HandleFunc("POST /shorten", shortenerHandler.Shorten)
+	mux.HandleFunc("GET /shorten", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("PUT /shorten", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("PATCH /shorten", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("DELETE /shorten", shortenerHandler.MethodNotAllowed)
+
+	mux.HandleFunc("GET /resolve/{code}", shortenerHandler.Resolve)
+	mux.HandleFunc("GET /resolve/", shortenerHandler.Resolve)
+	mux.HandleFunc("GET /resolve", shortenerHandler.Resolve)
+	mux.HandleFunc("POST /resolve/{code}", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("PUT /resolve/{code}", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("PATCH /resolve/{code}", shortenerHandler.MethodNotAllowed)
+	mux.HandleFunc("DELETE /resolve/{code}", shortenerHandler.MethodNotAllowed)
 
 	// Public Web UI and Redirect Routes
 	mux.HandleFunc("GET /{$}", h.Home)
