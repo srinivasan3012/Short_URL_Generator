@@ -1,0 +1,14 @@
+{
+  "name": "url-shortener",
+  "version": "1.0.0",
+  "description": "Production-ready Go URL Shortener backed by Neon PostgreSQL",
+  "scripts": {
+    "build": "go build -ldflags=\"-s -w\" -o bin/api.exe ./cmd/api",
+    "start": "bin/api.exe",
+    "test": "go test -v ./..."
+  },
+  "dependencies": {
+    "@neon/config": "^1.9.3",
+    "@neon/env": "^1.6.4"
+  }
+}

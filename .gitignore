@@ -29,3 +29,5 @@ Thumbs.db
 # Scratch and logs
 *.log
 scratch/
+.neon
+node_modules/

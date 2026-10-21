@@ -45,6 +45,13 @@ func NewPostgresRepository(ctx context.Context, cfg *config.Config) (domain.URLR
 		return nil, fmt.Errorf("failed to ping postgres: %w", err)
 	}
 
+	if cfg.RunMigrationsOnBoot {
+		if err := RunMigrations(connectCtx, pool); err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("failed to run migrations: %w", err)
+		}
+	}
+
 	return &postgresRepository{pool: pool}, nil
 }
 

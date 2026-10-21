@@ -38,6 +38,16 @@ type Config struct {
 
 // Load reads configuration from environment variables, falling back to sensible defaults.
 func Load() (*Config, error) {
+	loadDotEnv()
+
+	dbURL := getEnv("DATABASE_URL", "")
+	if dbURL == "" {
+		dbURL = getEnv("POSTGRES_URL", "")
+	}
+	if dbURL == "" {
+		dbURL = getEnv("NEON_DATABASE_URL", "")
+	}
+
 	cfg := &Config{
 		Port:                getEnv("PORT", "8080"),
 		Environment:         getEnv("ENVIRONMENT", "development"),
@@ -46,7 +56,7 @@ func Load() (*Config, error) {
 		WriteTimeout:        getEnvDuration("WRITE_TIMEOUT", 10*time.Second),
 		IdleTimeout:         getEnvDuration("IDLE_TIMEOUT", 120*time.Second),
 		ShutdownTimeout:     getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second),
-		DatabaseURL:         getEnv("DATABASE_URL", ""),
+		DatabaseURL:         dbURL,
 		DBMaxOpenConns:      getEnvInt("DB_MAX_OPEN_CONNS", 25),
 		DBMaxIdleConns:      getEnvInt("DB_MAX_IDLE_CONNS", 25),
 		DBConnMaxLifetime:   getEnvDuration("DB_CONN_MAX_LIFETIME", 15*time.Minute),
@@ -150,3 +160,28 @@ func getEnvBool(key string, defaultVal bool) bool {
 	}
 	return val
 }
+
+func loadDotEnv() {
+	for _, filename := range []string{".env", ".env.local"} {
+		content, err := os.ReadFile(filename)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(content), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				val := strings.TrimSpace(parts[1])
+				val = strings.Trim(val, `"'`)
+				if _, exists := os.LookupEnv(key); !exists {
+					_ = os.Setenv(key, val)
+				}
+			}
+		}
+	}
+}
+
