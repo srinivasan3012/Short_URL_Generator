@@ -28,7 +28,8 @@ func NewRouter(h *URLHandler, cfg RouterConfig) http.Handler {
 	mux.HandleFunc("DELETE /api/v1/urls/{code}", h.DeleteURL)
 	mux.HandleFunc("GET /api/v1/urls/{code}/stats", h.GetStats)
 
-	// Public Redirect Route
+	// Public Web UI and Redirect Routes
+	mux.HandleFunc("GET /{$}", h.Home)
 	mux.HandleFunc("GET /{code}", h.Redirect)
 
 	// Build middleware pipeline: RequestID -> Logger -> Recoverer -> RateLimiter -> CORS

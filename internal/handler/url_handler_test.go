@@ -44,6 +44,15 @@ func TestHandler_HealthzAndReadyz(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200 for /readyz, got: %d", rr.Code)
 	}
+
+	// 3. Home Web UI
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	rr = httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for root Home UI, got: %d", rr.Code)
+	}
 }
 
 func TestHandler_CreateAndGetURL(t *testing.T) {
