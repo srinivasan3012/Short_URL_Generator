@@ -3,12 +3,15 @@
 # -------------------------------------------------------------
 # Stage 1: Build binary
 # -------------------------------------------------------------
-FROM golang:1.24-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
 
 # Install ca-certificates and git for downloading dependencies
 RUN apk add --no-cache ca-certificates git tzdata
+
+# Enable auto toolchain download
+ENV GOTOOLCHAIN=auto
 
 # Leverage Docker cache layers by copying module files first
 COPY go.mod go.sum ./
